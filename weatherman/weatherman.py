@@ -1,114 +1,118 @@
 import csv
 import os
 import sys
+from collections import defaultdict
+from dataclasses import dataclass
+import argparse
+
+@dataclass
+class WeatherData:
+    max_temp:int
+    min_temp:int
+    max_hum:int
+    min_hum:int
+
+    def default_weather_data():
+        return WeatherData(float('-inf'), float('inf'), float('-inf'), float('+inf'))
 
 
-def yearReport(address):
-    results = {}
-    files = os.listdir(sys.argv[2]+'/')
-    for filename in files:
+@dataclass
+class HottestDay:
+    date:str
+    temp:int
+
+    def default_hottest_day():
+        return HottestDay('',float('-inf'))
+
+
+def year_report(directory):
+    results = defaultdict(WeatherData.default_weather_data)
+    filenames = os.listdir(directory + '/')
+    for filename in filenames:
         year = int(str(filename).split('_')[2])
-        if year in results.keys():
-            max_temp = results[year][0]
-            min_temp = results[year][1]
-            max_hum = results[year][2]
-            min_hum = results[year][3]
-        else:
-            max_temp = 0
-            min_temp = 100
-            min_hum = 100
-            max_hum = 0
-        with open(address+filename) as file:
-            csv_reader = csv.reader(file, delimiter=',')
-            row_count = 0
-            for row in csv_reader:
-                if row:
-                    if row_count == 0:
-                        row_len = len(row)
-                        index_of_max_temp = row.index('Max TemperatureC')
-                        index_of_min_temp = row.index('Min TemperatureC')
-                        index_of_max_hum = row.index('Max Humidity')
-                        index_of_min_hum = row.index(' Min Humidity')
-                    elif len(row) == row_len:
-                        if (row[index_of_max_temp]):
-                            max_temp = max(max_temp, int(
-                                row[index_of_max_temp]))
+        data = results[year]
+        file_handler = open(directory + filename)
+        csv_data = csv.reader(file_handler, delimiter=',')
+        data=process_year(csv_data, data)
+        file_handler.close()
 
-                        if (row[index_of_min_temp]):
-                            min_temp = min(min_temp, int(
-                                row[index_of_min_temp]))
-
-                        if (row[index_of_max_hum]):
-                            max_hum = max(max_hum, int(row[index_of_max_hum]))
-
-                        if (row[index_of_min_hum]):
-                            min_hum = min(min_hum, int(row[index_of_min_hum]))
-                    row_count += 1
-        results[year] = [max_temp, min_temp, max_hum, min_hum]
-
-
-    print("\n%-15s%-15s%-15s%-15s%-15s" %
-          ("Year", "MAX Temp", "MIN Temp", "MAX Humidity", "MIN Humidity"))
-    print("-"*75)
+    print(f"{'Year':15}{'Max Temp':15}{'Min Temp':15}{'Max Humidity':15}{'Min Humidity':15}")
+    print('-'*75)
     for key in sorted(results.keys()):
-        res = results[key]
-        print("%-15s%-15s%-15s%-15s%-15s" %
-              (key, res[0], res[1], res[2], res[3]))
+        data=results[key]
+        print(f'{key:<15}{data.max_temp:<15}{data.min_temp:<15}{data.max_hum:<15}{data.min_hum:<15}')
 
+def process_year(csv_data, data: WeatherData):
+    def my_min(row,prev_value,index):
+        if not row[index]:
+            return prev_value
+        return min(prev_value,int(row[index]))
+    
+    def my_max(row,prev_value,index):
+        if not row[index]:
+            return prev_value
+        return max(prev_value,int(row[index]))
 
-def hottestDay(address):
-    files = os.listdir(sys.argv[2]+'/')
-    results = {}
-    for filename in files:
+    header=next(csv_data)
+    if not header:
+        header=next(csv_data)
+    index_of_min_temp=header.index('Min TemperatureC')
+    index_of_max_temp=header.index('Max TemperatureC')
+    index_of_min_hum=header.index(' Min Humidity')
+    index_of_max_hum=header.index('Max Humidity')
+    for row in csv_data:
+        if not row or len(row)==1:
+            continue
+        data.min_temp=my_min(row,data.min_temp,index_of_min_temp)
+        data.min_hum=my_min(row,data.min_hum,index_of_min_hum)
+        data.max_temp=my_max(row,data.max_temp,index_of_max_temp)
+        data.max_hum=my_max(row,data.max_hum,index_of_max_hum)
+    return data
+
+def hottest_day(directory):
+    filenames = os.listdir(directory + '/')
+    results = defaultdict(HottestDay.default_hottest_day)
+    for filename in filenames:
         year = int(str(filename).split('_')[2])
-        if year in results.keys():
-            day = results[year][0]
-            temp = results[year][1]
-        else:
-            day = -1
-            temp = 0
-        with open(address+filename) as file:
-            csv_reader = csv.reader(file, delimiter=',')
-            row_count = 0
-            for row in csv_reader:
-                if row:
-                    if row_count == 0:
-                        row_len = len(row)
-                        index_of_max_temp = row.index('Max TemperatureC')
-                        if 'PKT' in row:
-                            index_of_date = row.index('PKT')
-                        else:
-                            index_of_date = row.index('PKST')
+        data = results[year]
+        file_handler = open(directory + filename)
+        csv_data = csv.reader(file_handler, delimiter=',')
+        data=process_hottest_day(csv_data, data)
+        file_handler.close()
+    
+    print(f"{'Year':15}{'Date':15}{'Temperature':15}")
+    print("-"*45)
+    for year in sorted(results.keys()):
+        print(f'{year:<15}{results[year].date:<15}{results[year].temp:<15}')
 
-                    elif len(row) == row_len:
-                        if (row[index_of_max_temp] and int(row[index_of_max_temp]) > temp):
-                            temp = int(row[index_of_max_temp])
-                            day = row[index_of_date]
+def process_hottest_day(csv_data,data: HottestDay):
+    header=next(csv_data)
+    if not header:
+        header=next(csv_data)
+    index_of_temp=header.index('Max TemperatureC')
+    index_of_date=-1
+    if 'PKST' in header:
+        index_of_date=header.index('PKST')
+    else:
+        index_of_date=header.index('PKT')
+    for row in csv_data:
+        if not row or len(row)==1:
+            continue
+        if row[index_of_temp] and int(row[index_of_temp])>data.temp :
+            data.temp=int(row[index_of_temp])
+            data.date=row[index_of_date]
+    return data
 
-                    row_count += 1
-        results[year] = [day, temp]
+def main():
 
+    parser=argparse.ArgumentParser(description='Weather Report')
+    parser.add_argument('report',type=int,help='1 for Annual Report, 2 for Hottest Day')
+    parser.add_argument('data_dir',type=str,help='Directory containing weather data')
+    args=parser.parse_args()
+    if (args.report==1):
+        year_report(args.data_dir)
+    else:
+        hottest_day(args.data_dir)
 
-    print("\n%-15s%-15s%-15s" % ("Year", "Date", "Temprature"))
-    print("-"*36)
-    for key in sorted(results.keys()):
-        print("%-15s%-15s%-15s" % (key, results[key][0], results[key][1]))
-
-
-if len(sys.argv) != 3 or sys.argv[1] not in ["1", "2"]:
-    print("""
-    Usage: weatherman [report#] [data_dir]
-
-    [Report #]
-    1 for Annual Max/Min Temperature
-    2 for Hottest day of each year
-
-    [data_dir]
-    Directory containing weather data files
-    """)
-    sys.exit()
-
-if (sys.argv[1] == "1"):
-    yearReport(sys.argv[2])
-else:
-    hottestDay(sys.argv[2])
+if __name__=='__main__':
+        main()
